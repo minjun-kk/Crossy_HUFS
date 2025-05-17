@@ -22,6 +22,8 @@ public class Controller : MonoBehaviour
     private bool isSquashed = false;
     private Coroutine currentSquashCoroutine;
 
+    private bool isGameOver = false; // 게임오버 상태 플래그
+    
     // 이동 방향 벡터
     private readonly Vector3 FORWARD = new Vector3(0, 0, 1);
     private readonly Vector3 BACKWARD = new Vector3(0, 0, -1);
@@ -37,7 +39,7 @@ public class Controller : MonoBehaviour
 
     void Update()
     {
-        if (isJumping) return;
+        if (isJumping || isGameOver) return; // 게임오버 시 입력 무시
 
         // 이동키를 눌렀을 때 압축 효과 시작
         if (Input.GetKeyDown(KeyCode.W))
@@ -146,5 +148,23 @@ public class Controller : MonoBehaviour
             yield return null;
         }
         transform.position = endPos;
+    }
+}
+
+private void OnTriggerEnter(Collider other)
+    {
+        if (isGameOver) return;
+        }
+
+        // 게임오버 처리 (UI 등)
+        GameOver();
+    }
+
+    void GameOver()
+    {
+        // 게임오버 처리: 입력 차단, UI 표시 등
+        // 예: GameManager.Instance.GameOver();
+        // 또는 씬 리로드 등
+        Debug.Log("Game Over!");
     }
 }
