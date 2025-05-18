@@ -151,14 +151,45 @@ public class Controller : MonoBehaviour
     }
 }
 
-private void OnTriggerEnter(Collider other)
+ private void OnTriggerEnter(Collider other)
     {
         if (isGameOver) return;
+
+        if (other.CompareTag("Water"))
+        {
+            StartCoroutine(FallIntoWater());
+        }
+        // "Vehicle" 태그 충돌 처리 로직 제거
+    }
+
+    IEnumerator FallIntoWater()
+    {
+        isGameOver = true;
+        isJumping = true; // 추가적인 이동이나 점프 방지
+
+        // 물에 빠지는 애니메이션 (아래로 천천히 가라앉음)
+        float sinkDuration = 0.8f;
+        float timer = 0f;
+        Vector3 startPos = transform.position;
+        Vector3 endPos = startPos + Vector3.down * 2f; // 가라앉는 깊이
+
+        // 스프라이트가 있다면 스프라이트만 비활성화하거나, 캐릭터 전체를 비활성화 할 수도 있습니다.
+        // 예: if (spriteTransform != null) spriteTransform.gameObject.SetActive(false);
+        // 또는, 물 파티클 효과 등을 여기서 재생할 수 있습니다.
+
+        while (timer < sinkDuration)
+        {
+            timer += Time.deltaTime;
+            float t = timer / sinkDuration;
+            transform.position = Vector3.Lerp(startPos, endPos, t);
+            yield return null;
         }
 
         // 게임오버 처리 (UI 등)
         GameOver();
     }
+
+    // GetSquashed() 코루틴 제거
 
     void GameOver()
     {
@@ -166,5 +197,8 @@ private void OnTriggerEnter(Collider other)
         // 예: GameManager.Instance.GameOver();
         // 또는 씬 리로드 등
         Debug.Log("Game Over!");
+        // 여기서 캐릭터 오브젝트를 비활성화하거나 파괴할 수도 있습니다.
+        // gameObject.SetActive(false);
+        // Destroy(gameObject);
     }
 }
