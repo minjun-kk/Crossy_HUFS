@@ -5,12 +5,12 @@ public class Controller : MonoBehaviour
 {
     public float moveDistance = 2f;         // 한 번 이동 시 이동 거리
     public float jumpHeight = 1f;           // 점프 최고 높이
-    public float jumpDuration = 0.1f;       // 점프 소요 시간 (더 빠르게)
+    public float jumpDuration = 0.1f;       // 점프 소요 시간(조정 시 빨라짐)
 
     [Header("스쿼시 앤 스트레치 효과")]
-    public Transform spriteTransform;       // 스케일을 변경할 스프라이트 트랜스폼
+    public Transform spriteTransform;
     public Vector3 squashScale = new Vector3(1.2f, 0.8f, 1f); // 압축 시 스케일
-    public float squashDuration = 0.05f;    // 압축/복원 소요 시간 (더 빠르게)
+    public float squashDuration = 0.05f;    // 압축/복원 소요 시간(조정 시 빨라짐)
 
     public LayerMask obstacleLayer;         // 충돌 체크용 레이어
     public Animator animator;               // Animator 컴포넌트
@@ -151,7 +151,7 @@ public class Controller : MonoBehaviour
     }
 }
 
- private void OnTriggerEnter(Collider other)
+  private void OnTriggerEnter(Collider other)
     {
         if (isGameOver) return;
 
@@ -159,23 +159,22 @@ public class Controller : MonoBehaviour
         {
             StartCoroutine(FallIntoWater());
         }
-        // "Vehicle" 태그 충돌 처리 로직 제거
+        else if (other.CompareTag("Vehicle"))
+        {
+            StartCoroutine(GetSquashed());
+        }
     }
 
     IEnumerator FallIntoWater()
     {
         isGameOver = true;
-        isJumping = true; // 추가적인 이동이나 점프 방지
+        isJumping = true;
 
         // 물에 빠지는 애니메이션 (아래로 천천히 가라앉음)
         float sinkDuration = 0.8f;
         float timer = 0f;
         Vector3 startPos = transform.position;
-        Vector3 endPos = startPos + Vector3.down * 2f; // 가라앉는 깊이
-
-        // 스프라이트가 있다면 스프라이트만 비활성화하거나, 캐릭터 전체를 비활성화 할 수도 있습니다.
-        // 예: if (spriteTransform != null) spriteTransform.gameObject.SetActive(false);
-        // 또는, 물 파티클 효과 등을 여기서 재생할 수 있습니다.
+        Vector3 endPos = startPos + Vector3.down * 2f;
 
         while (timer < sinkDuration)
         {
@@ -189,7 +188,29 @@ public class Controller : MonoBehaviour
         GameOver();
     }
 
-    // GetSquashed() 코루틴 제거
+    IEnumerator GetSquashed()
+    {
+        isGameOver = true;
+        isJumping = true;
+
+        // 납작해지는 애니메이션
+        float squashTime = 0.2f;
+        Vector3 startScale = spriteTransform.localScale;
+        Vector3 endScale = new Vector3(startScale.x * 1.2f, startScale.y * 0.2f, startScale.z);
+
+        float timer = 0f;
+        while (timer < squashTime)
+        {
+            timer += Time.deltaTime;
+            float t = timer / squashTime;
+            spriteTransform.localScale = Vector3.Lerp(startScale, endScale, t);
+            yield return null;
+        }
+        spriteTransform.localScale = endScale;
+
+        // 게임오버 처리 (UI 등)
+        GameOver();
+    }
 
     void GameOver()
     {
@@ -197,8 +218,5 @@ public class Controller : MonoBehaviour
         // 예: GameManager.Instance.GameOver();
         // 또는 씬 리로드 등
         Debug.Log("Game Over!");
-        // 여기서 캐릭터 오브젝트를 비활성화하거나 파괴할 수도 있습니다.
-        // gameObject.SetActive(false);
-        // Destroy(gameObject);
     }
 }
