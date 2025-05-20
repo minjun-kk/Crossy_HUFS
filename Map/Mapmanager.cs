@@ -27,7 +27,7 @@ public class MapManager : MonoBehaviour
         for (int i = 0; i < 40; i++)
         {
             if (i < 5)
-                SpawnRow(i, 0); // 초기 5칸은 잔디
+                SpawnRow(i, 0); // 처음 5칸은 잔디
             else
                 SpawnRandomRowLimited(i, 0, 1); // 5~39칸: 잔디/도로 랜덤
         }
@@ -104,7 +104,7 @@ public class MapManager : MonoBehaviour
         SpawnRow(z, type);
     }
 
-    // 장애물 생성 (x: -120 ~ 120, 10단위)
+    // 장애물 생성 (x: -120 ~ 120, 10단위, 타일의 자식으로 X)
     void SpawnObstacles(GameObject row, int rowType, int rowIndex)
     {
         if (rowType != 0) return; // 잔디(0)에서만 장애물
