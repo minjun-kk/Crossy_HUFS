@@ -106,35 +106,35 @@ public class MapManager : MonoBehaviour
 
     // 장애물 생성 (x: -120 ~ 120, 10단위, 타일의 자식으로 X)
     void SpawnObstacles(GameObject row, int rowType, int rowIndex)
+{
+    if (rowType != 0) return;
+
+    float z = rowIndex * rowLength;
+    int minX = -120;
+    int maxX = 120;
+    int step = 10;
+    int obstacleCount = (maxX - minX) / step + 1;
+
+    if (!rowObstacles.ContainsKey(row))
     {
-        if (rowType != 0) return; // 잔디(0)에서만 장애물
+        rowObstacles[row] = new List<GameObject>();
+    }
 
-        float z = rowIndex * rowLength;
-        int minX = -120;
-        int maxX = 120;
-        int step = 10;
-        int obstacleCount = (maxX - minX) / step + 1;
+    // 중복 방지를 위해 사용된 x 좌표 추적
+    HashSet<float> usedXPositions = new HashSet<float>();
 
-        // 이 타일에 속한 장애물 리스트 초기화
-        if (!rowObstacles.ContainsKey(row))
+    for (int i = 0; i < obstacleCount; i++)
+    {
+        float x = minX + i * step;
+        if (Random.value < obstacleChance && !usedXPositions.Contains(x))
         {
-            rowObstacles[row] = new List<GameObject>();
-        }
+            usedXPositions.Add(x); // 이 x 좌표는 사용됨
 
-        for (int i = 0; i < obstacleCount; i++)
-        {
-            if (Random.value < obstacleChance)
-            {
-                float x = minX + i * step; // -120, -110, ..., 0, ..., 110, 120
-                Vector3 pos = new Vector3(x, 0.5f, z);
-                int obstacleIndex = Random.Range(0, obstaclePrefabs.Length);
-                
-                // 장애물을 타일의 자식이 아닌 독립 오브젝트로 생성
-                GameObject obstacle = Instantiate(obstaclePrefabs[obstacleIndex], pos, Quaternion.identity);
-                
-                // 장애물을 이 타일에 속한 것으로 추적
-                rowObstacles[row].Add(obstacle);
-            }
+            Vector3 pos = new Vector3(x, 0.5f, z);
+            int obstacleIndex = Random.Range(0, obstaclePrefabs.Length);
+            GameObject obstacle = Instantiate(obstaclePrefabs[obstacleIndex], pos, Quaternion.identity);
+            rowObstacles[row].Add(obstacle);
         }
     }
+}
 }
