@@ -176,7 +176,7 @@ public class Controller : MonoBehaviour
         float sinkDuration = 0.8f;
         float timer = 0f;
         Vector3 startPos = transform.position;
-        Vector3 endPos = startPos + Vector3.down * 2f;
+        Vector3 endPos = startPos + Vector3.down * 3f;   // 물에 빠지는 깊이 조절(2 > 3)
 
         while (timer < sinkDuration)
         {
