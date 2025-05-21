@@ -10,7 +10,7 @@ public class Controller : MonoBehaviour
     [Header("스쿼시 앤 스트레치 효과")]
     public Transform spriteTransform;                           // 스케일을 변경할 스프라이트 트랜스폼
     public Vector3 squashScale = new Vector3(1.2f, 0.8f, 1f);   // 압축 시 스케일
-    public float squashDuration = 0.1f;                         // 압축/복원 소요 시간
+    public float squashDuration = 0.05f;                        // 압축/복원 소요 시간(0.1 > 0.05)
 
     public LayerMask obstacleLayer;                             // 충돌 체크용 레이어
     public Animator animator;                                   // Animator 컴포넌트
