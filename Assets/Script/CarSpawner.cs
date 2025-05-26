@@ -5,57 +5,133 @@ using UnityEngine;
 public class CarSpawnerOnRoad : MonoBehaviour
 {
     public GameObject carPrefab;
-    public float spawnInterval = 3f;
-    public float spawnYOffset = 0.5f;  // 자동차가 땅에서 조금 떠 있게
+    public float spawnYOffset = 0.5f;
+
+    private List<GameObject> activeCars = new List<GameObject>();
+    private List<GameObject> roadObjects = new List<GameObject>();
+
+    private Dictionary<GameObject, float> lastSpawnTime = new Dictionary<GameObject, float>();
+    private Dictionary<GameObject, float> spawnIntervals = new Dictionary<GameObject, float>();
+
+    private Dictionary<float, int> spawnedSidePerRoadZ = new Dictionary<float, int>();
+    // z좌표 -> 최근 소환된 x방향 (1: 오른쪽에서 왼쪽, -1: 왼쪽에서 오른쪽)
+
+    private float roadUpdateInterval = 1f;
+    private float lastRoadUpdateTime = 0f;
 
     void Start()
     {
-        StartCoroutine(SpawnCarsRoutine());
+        UpdateRoadObjects();
+        UpdateSpawning();
     }
 
-    IEnumerator SpawnCarsRoutine()
+    void Update()
     {
-        while (true)
+        if (Time.time - lastRoadUpdateTime >= roadUpdateInterval)
         {
-            // 씬에 존재하는 모든 오브젝트 중 이름에 "road"가 포함된 것 찾기
-            GameObject[] allObjects = GameObject.FindObjectsOfType<GameObject>();
-            List<GameObject> roadObjects = new List<GameObject>();
+            UpdateRoadObjects();
+            lastRoadUpdateTime = Time.time;
+        }
 
-            foreach (var obj in allObjects)
+        UpdateSpawning();
+    }
+
+    void UpdateRoadObjects()
+    {
+        GameObject[] allObjects = GameObject.FindObjectsOfType<GameObject>();
+        foreach (var obj in allObjects)
+        {
+            if (obj != null &&
+                obj.name.ToLower().Contains("road") &&
+                !roadObjects.Contains(obj))
             {
-                if (obj.name.ToLower().Contains("road"))
-                {
-                    roadObjects.Add(obj);
-                }
+                roadObjects.Add(obj);
+                lastSpawnTime[obj] = Time.time - 100f;
+                spawnIntervals[obj] = Random.Range(0.1f, 0.5f);
+            }
+        }
+    }
+
+    void UpdateSpawning()
+    {
+        activeCars.RemoveAll(car => car == null);
+
+        for (int i = activeCars.Count - 1; i >= 0; i--)
+        {
+            Car carScript = activeCars[i].GetComponent<Car>();
+            if (carScript != null && carScript.IsExpired())
+            {
+                Destroy(activeCars[i]);
+                activeCars.RemoveAt(i);
+            }
+        }
+
+        int carsSpawnedThisFrame = 0;
+        int maxCarsPerFrame = 1;
+
+        foreach (GameObject road in roadObjects)
+        {
+            if (carsSpawnedThisFrame >= maxCarsPerFrame) break;
+            if (!lastSpawnTime.ContainsKey(road)) lastSpawnTime[road] = Time.time;
+            if (!spawnIntervals.ContainsKey(road)) spawnIntervals[road] = Random.Range(4f, 8f);
+
+            if (Time.time - lastSpawnTime[road] < spawnIntervals[road]) continue;
+
+            float roadY = road.transform.position.y;
+            float roadZ = road.transform.position.z;
+
+            int spawnDirection = (Random.value > 0.5f) ? 1 : -1;
+
+            // 이 도로의 z좌표에서 반대 방향으로 이미 소환된 적이 있다면 skip
+            if (spawnedSidePerRoadZ.ContainsKey(roadZ) && spawnedSidePerRoadZ[roadZ] == -spawnDirection)
+                continue;
+
+            float spawnX = (spawnDirection == 1) ? -100f : 100f;
+            float spawnZ = roadZ + -5f;
+
+            // 왼쪽에서 오른쪽으로 이동하는 차량이면 z값 조정
+            if (spawnDirection == -1)
+            {
+                spawnZ += 10f;
             }
 
-            if (roadObjects.Count > 0)
+            Vector3 spawnPos = new Vector3(
+                spawnX,
+                roadY + spawnYOffset,
+                spawnZ
+            );
+
+            GameObject newCar = Instantiate(carPrefab, spawnPos, Quaternion.identity);
+
+            bool isRotated = false;
+            // 오른쪽에서 왼쪽으로 이동하는 차량은 회전
+            if (spawnDirection == 1)
             {
-                // road 중에 랜덤으로 선택
-                GameObject randomRoad = roadObjects[Random.Range(0, roadObjects.Count)];
-
-                // 방향 랜덤 결정 (true면 오른쪽, false면 왼쪽)
-                bool moveRight = Random.value > 0.5f;
-
-                // 방향에 따른 생성 X 위치 지정 (왼쪽 끝 또는 오른쪽 끝)
-                float spawnX = moveRight ? -100f : 100f;
-
-                Vector3 spawnPos = new Vector3(spawnX, randomRoad.transform.position.y + spawnYOffset, randomRoad.transform.position.z);
-
-                // 방향에 따른 회전 설정
-                Quaternion spawnRotation = moveRight ? Quaternion.Euler(0f, 180f, 0f) : Quaternion.identity;
-
-                GameObject car = Instantiate(carPrefab, spawnPos, spawnRotation);
-
-                // 생성된 자동차에 방향 및 속도 설정
-                Car carScript = car.GetComponent<Car>();
-                carScript.SetDirection(moveRight ? -1 : -1);
-
-                float randomSpeed = Random.Range(10f, 30f);
-                carScript.SetSpeed(randomSpeed);
+                newCar.transform.rotation = Quaternion.Euler(0f, 180f, 0f);
+                isRotated = true;
             }
 
-            yield return new WaitForSeconds(spawnInterval);
+            activeCars.Add(newCar);
+            carsSpawnedThisFrame++;
+
+            Car carScriptNew = newCar.GetComponent<Car>();
+            if (carScriptNew != null)
+            {
+                if (isRotated)
+                    carScriptNew.SetDirection(-spawnDirection);
+                else
+                    carScriptNew.SetDirection(spawnDirection);
+
+                carScriptNew.SetSpeed(20f);
+            }
+            else
+            {
+                Debug.LogWarning("Car prefab에 Car 스크립트가 연결되지 않았습니다.");
+            }
+
+            lastSpawnTime[road] = Time.time;
+            spawnIntervals[road] = Random.Range(2f, 6f);
+            spawnedSidePerRoadZ[roadZ] = spawnDirection;
         }
     }
 }
