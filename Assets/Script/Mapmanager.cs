@@ -21,15 +21,26 @@ public class MapManager : MonoBehaviour
     private Dictionary<GameObject, List<GameObject>> rowObstacles = new Dictionary<GameObject, List<GameObject>>(); // 각 타일에 속한 장애물 추적
     private int nextRowZ = 0; // 다음에 생성할 타일의 Z 위치
 
+    // === 추가: 특정 구간 잔디+장애물 없음 ===
+    bool IsAlwaysGrassNoObstacle(int rowIndex)
+    {
+        return (rowIndex >= 20 && rowIndex <= 27) ||
+               (rowIndex >= 40 && rowIndex <= 47) ||
+               (rowIndex >= 80 && rowIndex <= 87) ||
+               (rowIndex >= 100 && rowIndex <= 117);
+    }
+
     void Start()
     {
         // 초기 40칸 생성
         for (int i = 0; i < 40; i++)
         {
-            if (i < 5)
-                SpawnRow(i, 0); // 처음 5칸은 잔디
+            if (i < 10)
+                SpawnRow(i, 0); // 처음 10칸은 잔디
+            else if (IsAlwaysGrassNoObstacle(i)) // 추가: 특정 구간은 잔디
+                SpawnRow(i, 0);
             else
-                SpawnRandomRowLimited(i, 0, 1); // 5~39칸: 잔디/도로 랜덤
+                SpawnRandomRowLimited(i, 0, 1); // 10~39칸: 잔디/도로 랜덤
         }
         nextRowZ = 40;
     }
@@ -38,12 +49,15 @@ public class MapManager : MonoBehaviour
     {
         int playerZ = Mathf.FloorToInt(player.position.z / rowLength);
 
-        // 플레이어가 10칸 전쯤 오면 맵 생성
+        // 플레이어가 bufferTiles 전쯤 오면 맵 생성
         while (playerZ + bufferTiles > nextRowZ)
         {
-            if (nextRowZ < 40)
-                SpawnRandomRowLimited(nextRowZ, 0, 1); // 잔디/도로
+            // 추가: 특정 구간은 잔디
+            if (IsAlwaysGrassNoObstacle(nextRowZ))
+                SpawnRow(nextRowZ, 0);
             else if (nextRowZ < 60)
+                SpawnRandomRowLimited(nextRowZ, 0, 1); // 잔디/도로
+            else if (nextRowZ < 80)
                 SpawnRow(nextRowZ, 2); // 강
             else
                 SpawnRandomRowLimited(nextRowZ, 0, 1); // 잔디/도로
@@ -80,22 +94,23 @@ public class MapManager : MonoBehaviour
         }
     }
 
-    void SpawnRow(int z, int type)
-    {
-        GameObject row = Instantiate(
-            rowPrefabs[type],
-            new Vector3(0, 0, z * rowLength),
-            Quaternion.identity,
-            transform
-        );
-        spawnedRows.Enqueue(row);
+   void SpawnRow(int z, int type)
+{
+    GameObject row = Instantiate(
+        rowPrefabs[type],
+        new Vector3(0, 0, z * rowLength),
+        Quaternion.identity,
+        transform
+    );
+    spawnedRows.Enqueue(row);
 
-        // 첫 두 줄(z=0,1)에는 장애물 생성 안함
-        if (z >= 2)
-        {
-            SpawnObstacles(row, type, z);
-        }
+    // 첫 8칸만 장애물 생성 안함 (특정 구간 조건 제거)
+    if (z >= 8)
+    {
+        SpawnObstacles(row, type, z);
     }
+}
+
 
     void SpawnRandomRowLimited(int z, int type1, int type2)
     {
@@ -104,10 +119,10 @@ public class MapManager : MonoBehaviour
         SpawnRow(z, type);
     }
 
-    // 장애물 생성 (x: -120 ~ 120, 10단위, 타일의 자식으로 X)
+    // 장애물 생성 (특정 구간 제외)
     void SpawnObstacles(GameObject row, int rowType, int rowIndex)
 {
-    if (rowType != 0) return;
+    if (rowType != 0) return; // 잔디 타일만 장애물 생성
 
     float z = rowIndex * rowLength;
     int minX = -120;
@@ -120,16 +135,19 @@ public class MapManager : MonoBehaviour
         rowObstacles[row] = new List<GameObject>();
     }
 
-    // 중복 방지를 위해 사용된 x 좌표 추적
     HashSet<float> usedXPositions = new HashSet<float>();
 
     for (int i = 0; i < obstacleCount; i++)
     {
         float x = minX + i * step;
+
+        // 특정 구간(20~27, 40~47, 80~87, 100~117)에서 x=-70 ~ -30인 경우 스킵
+        if (IsAlwaysGrassNoObstacle(rowIndex) && x >= -70 && x <= -30)
+            continue;
+
         if (Random.value < obstacleChance && !usedXPositions.Contains(x))
         {
-            usedXPositions.Add(x); // 이 x 좌표는 사용됨
-
+            usedXPositions.Add(x);
             Vector3 pos = new Vector3(x, 0.5f, z);
             int obstacleIndex = Random.Range(0, obstaclePrefabs.Length);
             GameObject obstacle = Instantiate(obstaclePrefabs[obstacleIndex], pos, Quaternion.identity);
@@ -137,4 +155,5 @@ public class MapManager : MonoBehaviour
         }
     }
 }
+
 }
