@@ -3,26 +3,28 @@ using UnityEngine;
 
 public class Controller : MonoBehaviour
 {
-    public float moveDistance = 2f;         // 한 번 이동 시 이동 거리
-    public float jumpHeight = 1f;           // 점프 최고 높이
-    public float jumpDuration = 0.1f;       // 점프 소요 시간(0.3 > 0.1)
+    public float moveDistance = 2f;
+    public float jumpHeight = 1f;
+    public float jumpDuration = 0.1f;
 
     [Header("스쿼시 앤 스트레치 효과")]
-    public Transform spriteTransform;                           // 스케일을 변경할 스프라이트 트랜스폼
-    public Vector3 squashScale = new Vector3(1.2f, 0.8f, 1f);   // 압축 시 스케일
-    public float squashDuration = 0.05f;                        // 압축/복원 소요 시간(0.1 > 0.05)
+    public Transform spriteTransform;
+    public Vector3 squashScale = new Vector3(1.2f, 0.8f, 1f);
+    public float squashDuration = 0.05f;
 
-    public LayerMask obstacleLayer;                             // 충돌 체크용 레이어
-    public Animator animator;                                   // Animator 컴포넌트
+    public LayerMask obstacleLayer;
+    public Animator animator;
 
-    private bool isJumping = false;                             // 추가적인 이동이나 점프 방지
+    private bool isJumping = false;
     private Vector3 originalScale;
     private Vector3 currentMoveDir;
     private Quaternion currentTargetRot;
     private bool isSquashed = false;
     private Coroutine currentSquashCoroutine;
 
-    private bool isGameOver = false; // 게임오버 상태 플래그
+    private bool isGameOver = false;
+    [HideInInspector] public Transform currentLog = null;
+    [HideInInspector] public Vector3 lastLogPosition;
 
     // 이동 방향 벡터
     private readonly Vector3 FORWARD = new Vector3(0, 0, 1);
@@ -36,11 +38,14 @@ public class Controller : MonoBehaviour
             spriteTransform = transform;
 
         originalScale = spriteTransform.localScale;
+        SetupChildTriggerZones();
     }
 
     void Update()
     {
-        if (isJumping || isGameOver) return; // 게임오버 시 입력 무시
+        if (isJumping || isGameOver) return;
+
+        HandleLogMovement();
 
         if (Input.GetKeyDown(KeyCode.W))
         {
@@ -77,6 +82,35 @@ public class Controller : MonoBehaviour
             ApplySquashEffect(false, () => TryMove(currentMoveDir, currentTargetRot));
     }
 
+    // 자식 트리거 존 자동 설정
+    void SetupChildTriggerZones()
+    {
+        Collider[] childColliders = GetComponentsInChildren<Collider>();
+        foreach (Collider col in childColliders)
+        {
+            if (col.isTrigger && col.gameObject != this.gameObject)
+            {
+                TriggerForwarder forwarder = col.gameObject.GetComponent<TriggerForwarder>();
+                if (forwarder == null)
+                {
+                    forwarder = col.gameObject.AddComponent<TriggerForwarder>();
+                }
+                forwarder.parentController = this;
+            }
+        }
+    }
+
+    // 통나무와 함께 이동하는 로직
+    void HandleLogMovement()
+    {
+        if (currentLog != null && !isJumping)
+        {
+            Vector3 logMovement = currentLog.position - lastLogPosition;
+            transform.position += logMovement;
+            lastLogPosition = currentLog.position;
+        }
+    }
+
     void ApplySquashEffect(bool squash, System.Action onComplete = null)
     {
         if (currentSquashCoroutine != null)
@@ -89,7 +123,6 @@ public class Controller : MonoBehaviour
     {
         Vector3 targetScale = squash ? squashScale : originalScale;
         Vector3 startScale = spriteTransform.localScale;
-
         float timer = 0f;
 
         while (timer < squashDuration)
@@ -103,19 +136,31 @@ public class Controller : MonoBehaviour
         spriteTransform.localScale = targetScale;
         isSquashed = squash;
         currentSquashCoroutine = null;
-
         if (onComplete != null)
             onComplete();
     }
 
     void TryMove(Vector3 moveDir, Quaternion targetRot)
     {
-        if (Physics.Raycast(transform.position + Vector3.up * 0.1f, moveDir, moveDistance, obstacleLayer))
+        if (currentLog != null)
         {
-            return;
+            currentLog = null;
         }
 
+        if (Physics.Raycast(transform.position + Vector3.up * 0.1f, moveDir, moveDistance, obstacleLayer))
+        {
+            StartCoroutine(RotateOnly(targetRot));
+            return;
+        }
         StartCoroutine(RotateThenMove(moveDir, targetRot));
+    }
+
+    IEnumerator RotateOnly(Quaternion targetRot)
+    {
+        isJumping = true;
+        transform.rotation = targetRot;
+        yield return new WaitForSeconds(0.1f);
+        isJumping = false;
     }
 
     IEnumerator RotateThenMove(Vector3 moveDir, Quaternion targetRot)
@@ -135,7 +180,6 @@ public class Controller : MonoBehaviour
     {
         Vector3 startPos = transform.position;
         Vector3 endPos = startPos + direction;
-
         float timer = 0f;
 
         while (timer < jumpDuration)
@@ -143,40 +187,87 @@ public class Controller : MonoBehaviour
             float t = timer / jumpDuration;
             float height = 4 * jumpHeight * t * (1 - t);
             transform.position = Vector3.Lerp(startPos, endPos, t) + Vector3.up * height;
-
             timer += Time.deltaTime;
             yield return null;
         }
-
         transform.position = endPos;
     }
 
-    // === [여기서부터 게임종료 조건건 추가] ===
-
-    private void OnTriggerEnter(Collider other)
+    // === 충돌 처리 ===
+    private void OnCollisionEnter(Collision collision)
     {
         if (isGameOver) return;
 
-        if (other.CompareTag("Water"))
+        if (collision.gameObject.CompareTag("Log"))
         {
-            StartCoroutine(FallIntoWater());
+            currentLog = collision.transform;
+            lastLogPosition = currentLog.position;
+            Debug.Log("통나무에 올라탔습니다!");
         }
-        else if (other.CompareTag("Vehicle"))
+        else if (collision.gameObject.CompareTag("Vehicle"))
         {
             StartCoroutine(GetSquashed());
         }
     }
 
-    IEnumerator FallIntoWater()
+    private void OnCollisionExit(Collision collision)
+    {
+        if (isGameOver) return;
+
+        if (collision.gameObject.CompareTag("Log") && collision.transform == currentLog)
+        {
+            currentLog = null;
+            Debug.Log("통나무에서 내렸습니다!");
+        }
+    }
+
+    // === 트리거 처리 (자식에서 호출됨) ===
+    public void OnChildTriggerEnter(Collider other, Collider childTrigger)
+    {
+        if (isGameOver) return;
+
+        if (other.CompareTag("Water"))
+        {
+            Debug.Log($"물 감지: {childTrigger.name} 트리거가 감지함");
+            FallIntoWater();
+        }
+        else if (other.CompareTag("Vehicle"))
+        {
+            Debug.Log($"차량 감지: {childTrigger.name} 트리거가 감지함");
+            StartCoroutine(GetSquashed());
+        }
+    }
+
+    public void OnChildTriggerExit(Collider other, Collider childTrigger)
+    {
+        if (isGameOver) return;
+        // 필요시 트리거 종료 처리 로직 추가
+    }
+
+    // === 게임오버 처리 ===
+    public void FallIntoWater()
+    {
+        if (isGameOver) return;
+        StartCoroutine(FallIntoWaterCoroutine());
+    }
+
+    IEnumerator FallIntoWaterCoroutine()
     {
         isGameOver = true;
         isJumping = true;
 
-        // 물에 빠지는 효과과 (아래로 천천히 가라앉음)
-        float sinkDuration = 0.8f;
+        Rigidbody rb = GetComponent<Rigidbody>();
+        if (rb != null)
+        {
+            rb.linearVelocity = Vector3.zero;
+            rb.useGravity = false;
+            rb.isKinematic = true;
+        }
+
+        float sinkDuration = 0.5f;
         float timer = 0f;
         Vector3 startPos = transform.position;
-        Vector3 endPos = startPos + Vector3.down * 3f;   // 물에 빠지는 깊이 조절(2 > 3)
+        Vector3 endPos = startPos + Vector3.down * 10f;
 
         while (timer < sinkDuration)
         {
@@ -185,8 +276,9 @@ public class Controller : MonoBehaviour
             transform.position = Vector3.Lerp(startPos, endPos, t);
             yield return null;
         }
-
-        // 게임오버 처리 (UI 등)
+        // GameManager의 GameOver 호출
+        if (GameManager.Instance != null)
+            GameManager.Instance.GameOver();
         GameOver();
     }
 
@@ -195,12 +287,11 @@ public class Controller : MonoBehaviour
         isGameOver = true;
         isJumping = true;
 
-        // 납작해지는 효과
         float squashTime = 0.2f;
         Vector3 startScale = spriteTransform.localScale;
         Vector3 endScale = new Vector3(startScale.x * 1.2f, startScale.y * 0.2f, startScale.z);
-
         float timer = 0f;
+
         while (timer < squashTime)
         {
             timer += Time.deltaTime;
@@ -209,16 +300,36 @@ public class Controller : MonoBehaviour
             yield return null;
         }
         spriteTransform.localScale = endScale;
-
-        // 게임오버 처리 (UI 등)
+        // GameManager의 GameOver 호출
+        if (GameManager.Instance != null)
+            GameManager.Instance.GameOver();
         GameOver();
     }
 
     void GameOver()
     {
-        // 게임오버 처리: 입력 차단, UI 표시 등
-        // 예: GameManager.Instance.GameOver();
-        // 또는 씬 리로드 등
         Debug.Log("Game Over!");
+    }
+}
+
+// === 보조 컴포넌트: 트리거 전달자 ===
+public class TriggerForwarder : MonoBehaviour
+{
+    [HideInInspector] public Controller parentController;
+
+    private void OnTriggerEnter(Collider other)
+    {
+        if (parentController != null)
+        {
+            parentController.OnChildTriggerEnter(other, GetComponent<Collider>());
+        }
+    }
+
+    private void OnTriggerExit(Collider other)
+    {
+        if (parentController != null)
+        {
+            parentController.OnChildTriggerExit(other, GetComponent<Collider>());
+        }
     }
 }
