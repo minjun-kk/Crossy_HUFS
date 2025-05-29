@@ -323,3 +323,27 @@ public class Controller : MonoBehaviour
         Debug.Log("Game Over!");
     }
 }
+
+// === 보조 컴포넌트: 자식 트리거에서 부모 Controller로 이벤트 전달 ===
+public class TriggerForwarder : MonoBehaviour
+{
+    [HideInInspector] public Controller parentController;
+
+    // 트리거 진입 시 부모 Controller에 이벤트 전달
+    private void OnTriggerEnter(Collider other)
+    {
+        if (parentController != null)
+        {
+            parentController.OnChildTriggerEnter(other, GetComponent<Collider>());
+        }
+    }
+
+    // 트리거 종료 시 부모 Controller에 이벤트 전달
+    private void OnTriggerExit(Collider other)
+    {
+        if (parentController != null)
+        {
+            parentController.OnChildTriggerExit(other, GetComponent<Collider>());
+        }
+    }
+}
