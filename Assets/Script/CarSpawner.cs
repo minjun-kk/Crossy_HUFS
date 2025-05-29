@@ -4,20 +4,75 @@ using UnityEngine;
 
 public class CarSpawnerOnRoad : MonoBehaviour
 {
-    public GameObject carPrefab;
+    public GameObject[] carPrefabs; // 4ê°œ í”„ë¦¬íŒ¹ì„ ë°°ì—´ë¡œ ë“±ë¡
     public float spawnYOffset = 0.5f;
+    public float minCarSpacing = 15f; // ì°¨ëŸ‰ ìµœì†Œ ê°„ê²©
 
-    private List<GameObject> activeCars = new List<GameObject>();
+    // ë‚´ë¶€ Car í´ë˜ìŠ¤
+    public class Car : MonoBehaviour
+    {
+        private Vector3 direction;
+        private float speed;
+        private float lifetime = 10f;
+        private float timer = 0f;
+        private int road;
+
+        public void SetDirection(Vector3 dir)
+        {
+            direction = dir;
+        }
+
+        public void SetSpeed(float spd)
+        {
+            speed = spd;
+        }
+
+        void Update()
+        {
+            // ì›”ë“œ ì¢Œí‘œê³„ ê¸°ì¤€ ì´ë™
+            transform.Translate(direction * speed * Time.deltaTime, Space.World);
+            timer += Time.deltaTime;
+        }
+
+        public bool IsExpired()
+        {
+            return timer > lifetime;
+        }
+
+        public void SetRoad(int r)
+        {
+            road = r;
+        }
+
+        public int GetRoad()
+        {
+            return road;
+        }
+    }
+
+    // CarDataëŠ” Car ì˜¤ë¸Œì íŠ¸ ê´€ë¦¬ìš© ë°ì´í„° í´ë˜ìŠ¤
+    private class CarData
+    {
+        public Car carComponent;
+        public float spawnTime;
+        public GameObject road;
+
+        public bool IsExpired(float currentTime, float lifetime)
+        {
+            return currentTime - spawnTime >= lifetime;
+        }
+    }
+
+    private List<CarData> activeCars = new List<CarData>();
     private List<GameObject> roadObjects = new List<GameObject>();
 
     private Dictionary<GameObject, float> lastSpawnTime = new Dictionary<GameObject, float>();
     private Dictionary<GameObject, float> spawnIntervals = new Dictionary<GameObject, float>();
-
     private Dictionary<float, int> spawnedSidePerRoadZ = new Dictionary<float, int>();
-    // zÁÂÇ¥ -> ÃÖ±Ù ¼ÒÈ¯µÈ x¹æÇâ (1: ¿À¸¥ÂÊ¿¡¼­ ¿ŞÂÊ, -1: ¿ŞÂÊ¿¡¼­ ¿À¸¥ÂÊ)
 
     private float roadUpdateInterval = 1f;
     private float lastRoadUpdateTime = 0f;
+    private float carLifetime = 10f;
 
     void Start()
     {
@@ -33,15 +88,30 @@ public class CarSpawnerOnRoad : MonoBehaviour
             lastRoadUpdateTime = Time.time;
         }
 
+        UpdateCars();
         UpdateSpawning();
     }
 
     void UpdateRoadObjects()
     {
-        GameObject[] allObjects = GameObject.FindObjectsOfType<GameObject>();
+        for (int i = roadObjects.Count - 1; i >= 0; i--)
+        {
+            GameObject road = roadObjects[i];
+            if (road == null || !road.activeInHierarchy)
+            {
+                roadObjects.RemoveAt(i);
+                lastSpawnTime.Remove(road);
+                spawnIntervals.Remove(road);
+            }
+        }
+
+        // Unity 2023.1 ì´ìƒ: FindObjectsByType ì‚¬ìš©!
+        GameObject[] allObjects = Object.FindObjectsByType<GameObject>(FindObjectsSortMode.None);
+
         foreach (var obj in allObjects)
         {
             if (obj != null &&
+                obj.activeInHierarchy &&
                 obj.name.ToLower().Contains("road") &&
                 !roadObjects.Contains(obj))
             {
@@ -52,26 +122,38 @@ public class CarSpawnerOnRoad : MonoBehaviour
         }
     }
 
-    void UpdateSpawning()
+    void UpdateCars()
     {
-        activeCars.RemoveAll(car => car == null);
+        float now = Time.time;
 
         for (int i = activeCars.Count - 1; i >= 0; i--)
         {
-            Car carScript = activeCars[i].GetComponent<Car>();
-            if (carScript != null && carScript.IsExpired())
+            CarData carData = activeCars[i];
+
+            if (carData.carComponent == null)
             {
-                Destroy(activeCars[i]);
+                activeCars.RemoveAt(i);
+                continue;
+            }
+
+            if (carData.IsExpired(now, carLifetime) || carData.carComponent.IsExpired())
+            {
+                Destroy(carData.carComponent.gameObject);
                 activeCars.RemoveAt(i);
             }
         }
+    }
 
+    void UpdateSpawning()
+    {
         int carsSpawnedThisFrame = 0;
         int maxCarsPerFrame = 1;
 
         foreach (GameObject road in roadObjects)
         {
             if (carsSpawnedThisFrame >= maxCarsPerFrame) break;
+            if (road == null || !road.activeInHierarchy) continue;
+
             if (!lastSpawnTime.ContainsKey(road)) lastSpawnTime[road] = Time.time;
             if (!spawnIntervals.ContainsKey(road)) spawnIntervals[road] = Random.Range(4f, 8f);
 
@@ -82,52 +164,68 @@ public class CarSpawnerOnRoad : MonoBehaviour
 
             int spawnDirection = (Random.value > 0.5f) ? 1 : -1;
 
-            // ÀÌ µµ·ÎÀÇ zÁÂÇ¥¿¡¼­ ¹İ´ë ¹æÇâÀ¸·Î ÀÌ¹Ì ¼ÒÈ¯µÈ ÀûÀÌ ÀÖ´Ù¸é skip
             if (spawnedSidePerRoadZ.ContainsKey(roadZ) && spawnedSidePerRoadZ[roadZ] == -spawnDirection)
                 continue;
 
             float spawnX = (spawnDirection == 1) ? -100f : 100f;
-            float spawnZ = roadZ + -5f;
+            float spawnZ = roadZ; // ë„ë¡œ ì¤‘ì•™ì— ìŠ¤í°
 
-            // ¿ŞÂÊ¿¡¼­ ¿À¸¥ÂÊÀ¸·Î ÀÌµ¿ÇÏ´Â Â÷·®ÀÌ¸é z°ª Á¶Á¤
-            if (spawnDirection == -1)
+            Vector3 spawnPos = new Vector3(spawnX, roadY + spawnYOffset, spawnZ);
+
+            // ì°¨ëŸ‰ ê²¹ì¹¨ ë°©ì§€: ê°™ì€ ë„ë¡œì— ì¼ì • ê±°ë¦¬ ì´ë‚´ì— ì°¨ê°€ ìˆëŠ”ì§€ ê²€ì‚¬
+            bool isTooClose = false;
+            foreach (var carData in activeCars)
             {
-                spawnZ += 10f;
+                if (carData.road == road)
+                {
+                    float dist = Mathf.Abs(carData.carComponent.transform.position.x - spawnX);
+                    if (dist < minCarSpacing)
+                    {
+                        isTooClose = true;
+                        break;
+                    }
+                }
+            }
+            if (isTooClose)
+                continue; // ì´ë²ˆ ìŠ¤í°ì€ ê±´ë„ˆëœ€
+
+            // 4ê°œ í”„ë¦¬íŒ¹ ì¤‘ ëœë¤ ì„ íƒ
+            int prefabIndex = Random.Range(0, carPrefabs.Length);
+            GameObject selectedPrefab = carPrefabs[prefabIndex];
+
+            // ì´ë™ ë°©í–¥ê³¼ íšŒì „ê°’ ê²°ì •
+            float yRotation;
+            Vector3 moveDirection;
+
+            if (spawnDirection == 1) // ì˜¤ë¥¸ìª½(x+)
+            {
+                yRotation = 90f;
+                moveDirection = Vector3.right;
+            }
+            else // ì™¼ìª½(x-)
+            {
+                yRotation = -90f;
+                moveDirection = Vector3.left;
             }
 
-            Vector3 spawnPos = new Vector3(
-                spawnX,
-                roadY + spawnYOffset,
-                spawnZ
-            );
+            // Instantiateí•  ë•Œ íšŒì „ ì ìš©
+            GameObject newCarObject = Instantiate(selectedPrefab, spawnPos, Quaternion.Euler(0f, yRotation, 0f));
 
-            GameObject newCar = Instantiate(carPrefab, spawnPos, Quaternion.identity);
+            // Car ì»´í¬ë„ŒíŠ¸ ì¶”ê°€ ë° ì„¸íŒ…
+            Car newCar = newCarObject.AddComponent<Car>();
+            newCar.SetDirection(moveDirection);
+            newCar.SetSpeed(20f);
+            newCar.SetRoad((int)roadZ);
 
-            bool isRotated = false;
-            // ¿À¸¥ÂÊ¿¡¼­ ¿ŞÂÊÀ¸·Î ÀÌµ¿ÇÏ´Â Â÷·®Àº È¸Àü
-            if (spawnDirection == 1)
+            CarData carDataNew = new CarData
             {
-                newCar.transform.rotation = Quaternion.Euler(0f, 180f, 0f);
-                isRotated = true;
-            }
+                carComponent = newCar,
+                spawnTime = Time.time,
+                road = road
+            };
 
-            activeCars.Add(newCar);
+            activeCars.Add(carDataNew);
             carsSpawnedThisFrame++;
-
-            Car carScriptNew = newCar.GetComponent<Car>();
-            if (carScriptNew != null)
-            {
-                if (isRotated)
-                    carScriptNew.SetDirection(-spawnDirection);
-                else
-                    carScriptNew.SetDirection(spawnDirection);
-
-                carScriptNew.SetSpeed(20f);
-            }
-            else
-            {
-                Debug.LogWarning("Car prefab¿¡ Car ½ºÅ©¸³Æ®°¡ ¿¬°áµÇÁö ¾Ê¾Ò½À´Ï´Ù.");
-            }
 
             lastSpawnTime[road] = Time.time;
             spawnIntervals[road] = Random.Range(2f, 6f);
